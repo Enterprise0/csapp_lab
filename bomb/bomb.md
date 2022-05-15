@@ -1,3 +1,4 @@
+
 <!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
 
 <!-- code_chunk_output -->
@@ -84,7 +85,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    End of assembler dump.
    ```
 
-   显然，bomb2密码为6个数。同样进入`read_six_numbers`函数，打断点：
+   进入`read_six_numbers`函数，打断点：
 
    ```c
    (gdb) disas
@@ -114,7 +115,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    (gdb) print (char*)0x4025c3
    $16 = 0x4025c3 "%d %d %d %d %d %d"
    ```
-   bomb2密码为6个整数，注意有空格。如果输入的不是6个整数，返回`EOF`即0x1，`cmp    $0x5,%eax`不通过，爆炸。
+   显然，bomb2密码为6个int，注意有空格。如果输入的不是6个整数，返回`EOF`即0x1，`cmp    $0x5,%eax`不通过，爆炸。
     
 2. 回到phase_2函数
    ```c
@@ -148,7 +149,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    End of assembler dump.
    ```
 
-   在`0x0000000000400f0a`处（即read_six_number函数下一条指令）打断点，查看栈帧，里面依次存放输入的6个整数（int类型长度为4个字节），这里我输入`1 2 3 4 5 6`用于调试：
+   在`0x400f0a`处（即read_six_number函数下一条指令）打断点，查看栈帧，里面依次存放输入的6个整数（int类型长度为4个字节），这里我输入`1 2 3 4 5 6`用于调试：
    ```c
    (gdb) print /x *(int*) ($rsp)
    $47 = 0x1
@@ -262,7 +263,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    (gdb) print (char*)0x4025cf
    $74 = 0x4025cf "%d %d"
    ```
-   要求输入两个整数，否则爆炸。num1和num2分别存放在`($rsp+8)`和`($rsp+12)`，因为在`phase_3`开头`%rsp`先减8。
+   要求输入两个整数，否则爆炸。num1和num2分别存放在地址`%rsp+8`和`%rsp+12`，因为在`phase_3`开头`%rsp`先减8。
 
 2. 继续往下看
    ```c
@@ -311,7 +312,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
 
    
 4. num1 = 1 ~ 7
-   其他7个数也是一样，所以bomb3的密码有8个：
+   其他7个数也是一样和某个int比较，相等则跳转，否则爆炸。所以bomb3的密码有8个：
    `0 207`、`1 311`、`2 707`、`3 256`、`4 389`、`5 206`、`6 682`、`7 327`。
 
 ## bomb4
@@ -344,7 +345,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
       0x0000000000401061 <+85>:	retq   
    End of assembler dump.
    ```
-   查看`0x4025cf`，还是2个整数，num1和num2仍然存放在`($rsp+8)`和`($rsp+12)`：
+   查看`0x4025cf`，还是2个整数，num1和num2仍然存放在`%rsp+8`和`%rsp+12`：
    ```c
    (gdb) print (char*)0x4025cf
    $1 = 0x4025cf "%d %d"
@@ -362,7 +363,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
       0x000000000040103f <+51>:	mov    $0x0,%esi
       0x0000000000401044 <+56>:	mov    0x8(%rsp),%edi
       0x0000000000401048 <+60>:	callq  0x400fce <func4>
-   ```   
+   ```
    `%edi、%esi、%edx`通常用作传递第1~3个参数。猜测`func4`函数传入了三个参数：num1、0、14。
 
 3. 进入`func4`打断点：
@@ -434,7 +435,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    ```
    num2=0则跳转，否则爆炸。
 
-所以bomb4的密码：7 0
+所以bomb4的密码：`7 0`。
 
 ## bomb5
 ----
@@ -487,7 +488,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
       0x00000000004010d2 <+112>:	mov    $0x0,%eax
       0x00000000004010d7 <+117>:	jmp    0x40108b <phase_5+41>
    ```
-   将(%eax)清零并跳转进入循环。
+   将`%eax`清零并跳转进入循环。
 
 2. 进入循环
    ```c
@@ -509,7 +510,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    ```
    >有一个小彩蛋，在`(0x4024b0+'a')`地址处有一个字符串：`"secret phase!"`
    
-   循环里每次取字符低4位为索引，在`0x4024b0`地址处的字符串前面的16个乱序字符处（所以前面和0xf进行按位与）得到新的字符。相当于编码，得到新的字符串，放在`(%rsp+0x10)`处。
+   循环里每次取字符低4位为索引，在`0x4024b0`地址处的字符串前面的16个乱序字符处（所以前面和0xf进行按位与）得到新的字符。相当于编码，得到新的字符串，放在地址`%rsp+0x10`处。
 
 3. 跳出循环
    ```c
@@ -541,7 +542,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    (gdb) print (char)(0x60+7)
    $136 = 103 'g'
    ```
-   逆向得到编码之前的字符串即密码为：ionefg
+   逆向得到编码之前的字符串即密码为：`ionefg`。
 
 ## bomb6
 ----
@@ -637,11 +638,11 @@ $3 = 0x402400 "Border relations with Canada have never been better."
       0x0000000000401203 <+271>:	retq   
    End of assembler dump.
    ```
-   bomb6的密码同样为6个整数，存放在地址`(%rsp)`~`(%rsp+20)`中，注意int大小为4Byte。
+   bomb6的密码同样为6个整数，存放在地址`%rsp`~`%rsp+20`中，注意int大小为4Byte。
    读完6个整数后进入循环。
 
 2. 进入循环1
-   循环前，%r13、%r14、%rsi都等于%rsp，存放num1的地址。(%r12d)=0
+   循环前，%r13、%r14、%rsi都等于%rsp，存放num1的地址。%r12d=0
    ```c
       0x0000000000401114 <+32>:	mov    %r13,%rbp
       0x0000000000401117 <+35>:	mov    0x0(%r13),%eax
@@ -693,7 +694,7 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    双层循环用于判断当前数不能和后面的数相等。注意这里先减1再判断，所以num不能为0。
 
 3. 用`1 2 3 4 5 6`调试，跳出循环1，进入循环2
-   进入循环前，%rsi = (%rsp+0x18), %rax = %r14 = %rsp，(%ecx)=0x7。（`(%rsp+0x14)`处存放num6。）
+   进入循环前，%rsi = *(%rsp+0x18), %rax = %r14 = %rsp，%ecx=0x7。地址`%rsp+0x14`处存放num6。
    ```c
    => 0x0000000000401160 <+108>:	mov    %ecx,%edx
       0x0000000000401162 <+110>:	sub    (%rax),%edx
@@ -835,7 +836,10 @@ $3 = 0x402400 "Border relations with Canada have never been better."
    ```
    已知，在地址`%rsp+0x20`到`%rsp+0x20+0x18`处存放8个64位地址。num'=1-6时分别对应：0x6032d0、0x6032e0、0x6032f0、0x603300、0x603310、0x603320。每个地址都存放了一个int，分别为：332、168、924、691、477、443。
    
-而循环5要求降序，所以num'1-6 = 3 4 5 6 1 2，显然bomb6密码为：4 3 2 1 6 5。
+   ![bomb6_stack](bomb6_stack.png)
+   
+而循环5要求降序，所以num'1-6 = 3 4 5 6 1 2，显然bomb6密码为：`4 3 2 1 6 5`。
+
 
 ## 总结
 ----
