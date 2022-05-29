@@ -1,3 +1,3 @@
-mov $0x5561dca8,%edi
-push $0x5561dcb1
+mov $0x5561dc78,%edi
+push $0x4018fa
 ret
